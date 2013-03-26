@@ -24,11 +24,11 @@
  */
 
 error_reporting(E_ALL); // Debug
-include './extensions/Auth_UC/config.inc.php';
-include './extensions/Auth_UC/client/client.php';
+include './extensions/Auth_UCenter/config.inc.php';
+include './extensions/Auth_UCenter/uc_client/client.php';
 
-if (!class_exist('AuthPlugin')) {
-	require_once './includes./AuthPlugin.php';
+if (!class_exists('AuthPlugin')) {
+	require_once './includes/AuthPlugin.php';
 }
 
 /**
@@ -42,6 +42,58 @@ if (!class_exist('AuthPlugin')) {
  * someone logs in who can be authenticated externally.
  */
 class Auth_UCenter extends AuthPlugin {
+
+	private function connect() {
+		global $wgAuthUCenterDBCharset;
+		global $wgAuthUCenterDBHost;
+		global $wgAuthUCenterDBName;
+		global $wgAuthUCenterDBUser;
+		global $wgAuthUCenterDBPassword;
+		$connection = @mysql_connect(	$wgAuthUCenterDBHost,
+						$wgAuthUCenterDBUser,
+						$wgAuthUCenterDBPassword,
+						true	);
+		//if ((mysql_get_server_info() >= 4.1) && (isset($wgAuthUCenterDBCharset))) {
+		//}
+		$db = mysql_select_db($wgAuthUCenterDBName, $connection);
+		return connection;
+	}
+
+	private function processUsername( $username ) {
+		global $wgAuthUCenterUCCharset;
+		$username = htmlspecialchars(strtolower($username), ENT_QUOTES, 'UTF-8');
+		if (isset($wgAuthUCenterUCCharset) && !strcasecmp($wgAuthUCenterUCCharset, 'UTF-8')) {
+			$username = iconv('UTF-8', $wgAuthUCenterUCCharset, $username);
+		}
+		return $username;
+	}
+
+	private function checkCredit( $uid ) {
+		return true;
+		global $wgAuthUCenterCreditLimit;
+		if (isset($wgAuthUCenterCreditLimit) && $wgAuthUCenterCreditLimit > 0) {
+			$credit = uc_user_getcredit($uid, 1, 1);
+			echo "Credit: $credit.\n";
+			return $credit >= $wgAuthUCenterCreditLimit;
+		}
+		else {
+			return true;
+		}
+	}
+
+	private function queryAdminId( $uid ) {
+		global $wgAuthUCenterDBTablePre;
+		$connection = $this->connect();
+		$query = 	"SELECT `adminid` ".
+				"FROM ${wgAuthUCenterDBTablePre}common_member ".
+				"WHERE `uid` = '$uid' ".
+				"LIMIT 1";
+		$result = mysql_query($query, $connection);
+		while ($result = mysql_fetch_array($result)) {
+			$admin_id = $result['adminid'];
+		}
+		return $admin_id;		
+	}
 
 	/**
 	 * @var string
@@ -58,8 +110,14 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function userExists( $username ) {
-		# Override this!
-		return false;
+		$username = $this->processUsername($username);
+		if ($data = uc_get_user($username)) {
+			list($uc_uid, $uc_username, $uc_email) = $data;
+			return $this->checkCredit($uc_uid);
+		}
+		else {
+			return false;
+		}
 	}
 
 	/**
@@ -73,8 +131,23 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function authenticate( $username, $password ) {
-		# Override this!
-		return false;
+		$username = $this->processUsername($username);
+		list($uc_uid, $uc_username, $uc_password, $uc_email) = uc_user_login($username, $password);
+		if ($uc_uid > 0) {
+			echo uc_user_synlogin($uc_uid);
+			return $this->checkCredit($uc_uid);
+		}
+		else if ($uc_uid == -1) {
+			echo "No such user.";
+			return false;
+		}
+		else if ($uc_uid == -2) {
+			echo "Password error.";
+			return false;
+		}
+		else {
+			echo "Unknown error.";
+		}
 	}
 
 	/**
@@ -117,7 +190,6 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function validDomain( $domain ) {
-		# Override this!
 		return true;
 	}
 
@@ -133,7 +205,26 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function updateUser( &$user ) {
-		# Override this and do something
+		$username = $this->processUsername($user->mName);
+		if ($data = uc_get_user($username)) {
+			list($uc_uid, $uc_username, $uc_email) = $data;
+			if (!$this->checkCredit($uc_uid)) {
+				return false;
+			}
+			$user->mEmail = $uc_email;
+			$user->mId = $uc_uid;
+		}
+		else {
+			echo "No such user.";
+			return false;
+		}
+		$user->removeGroup("user");
+		$user->removeGroup("autoconfirmed");
+		$user->removeGroup("sysop");
+		if ($this->queryAdminId($uc_uid) > 0) {
+			$user->addGroup("sysop");
+		}
+		$user->saveSettings();
 		return true;
 	}
 
@@ -151,7 +242,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return Boolean
 	 */
 	public function autoCreate() {
-		return false;
+		return true;
 	}
 
 	/**
@@ -181,7 +272,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function allowPasswordChange() {
-		return true;
+		return false;
 	}
 
 	/**
@@ -190,7 +281,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function allowSetLocalPassword() {
-		return true;
+		return false;
 	}
 
 	/**
@@ -206,7 +297,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function setPassword( $user, $password ) {
-		return true;
+		return false;
 	}
 
 	/**
@@ -217,7 +308,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return Boolean
 	 */
 	public function updateExternalDB( $user ) {
-		return true;
+		return false;
 	}
 
 	/**
@@ -240,7 +331,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return Boolean
 	 */
 	public function addUser( $user, $password, $email = '', $realname = '' ) {
-		return true;
+		return false;
 	}
 
 	/**
@@ -278,7 +369,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @param $autocreate Boolean: True if user is being autocreated on login
 	 */
 	public function initUser( &$user, $autocreate = false ) {
-		# Override this to do something.
+		$this->updateUser(&$user);
 	}
 
 	/**
@@ -312,7 +403,7 @@ class Auth_UCenter extends AuthPlugin {
 	}
 }
 
-class AuthPluginUser {
+class AuthUCenterUser extends AuthPluginUser {
 	function __construct( $user ) {
 		# Override this!
 	}
