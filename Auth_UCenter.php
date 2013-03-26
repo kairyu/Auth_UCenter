@@ -56,7 +56,7 @@ class Auth_UCenter extends AuthPlugin {
 		//if ((mysql_get_server_info() >= 4.1) && (isset($wgAuthUCenterDBCharset))) {
 		//}
 		$db = mysql_select_db($wgAuthUCenterDBName, $connection);
-		return connection;
+		return $connection;
 	}
 
 	private function processUsername( $username ) {
@@ -69,11 +69,12 @@ class Auth_UCenter extends AuthPlugin {
 	}
 
 	private function checkCredit( $uid ) {
-		return true;
 		global $wgAuthUCenterCreditLimit;
 		if (isset($wgAuthUCenterCreditLimit) && $wgAuthUCenterCreditLimit > 0) {
-			$credit = uc_user_getcredit($uid, 1, 1);
-			echo "Credit: $credit.\n";
+			//$credit = uc_user_getcredit($uid, 1, 1);
+			$credit = $this->queryCredits($uid);
+			echo "Credit: '$credit'.\n";
+			echo "uid: $uid\n";
 			return $credit >= $wgAuthUCenterCreditLimit;
 		}
 		else {
@@ -82,18 +83,28 @@ class Auth_UCenter extends AuthPlugin {
 	}
 
 	private function queryAdminId( $uid ) {
+		return $this->queryMember($uid, 'adminid');
+	}
+
+	private function queryCredits( $uid ) {
+		return $this->queryMember($uid, 'credits');
+	}
+
+	private function queryMember( $uid, $field ) {
 		global $wgAuthUCenterDBTablePre;
 		$connection = $this->connect();
-		$query = 	"SELECT `adminid` ".
+		$query = 	"SELECT `$field` ".
 				"FROM ${wgAuthUCenterDBTablePre}common_member ".
 				"WHERE `uid` = '$uid' ".
 				"LIMIT 1";
-		$result = mysql_query($query, $connection);
-		while ($result = mysql_fetch_array($result)) {
-			$admin_id = $result['adminid'];
+		$row = mysql_query($query, $connection);
+		while ($row = mysql_fetch_array($row)) {
+			$result = $row[$field];
+			echo "$result\n";
 		}
-		return $admin_id;		
+		return $result;
 	}
+		
 
 	/**
 	 * @var string
@@ -147,6 +158,7 @@ class Auth_UCenter extends AuthPlugin {
 		}
 		else {
 			echo "Unknown error.";
+			return false;
 		}
 	}
 
@@ -297,7 +309,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function setPassword( $user, $password ) {
-		return false;
+		return true;
 	}
 
 	/**
@@ -308,7 +320,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return Boolean
 	 */
 	public function updateExternalDB( $user ) {
-		return false;
+		return true;
 	}
 
 	/**
@@ -331,7 +343,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return Boolean
 	 */
 	public function addUser( $user, $password, $email = '', $realname = '' ) {
-		return false;
+		return true;
 	}
 
 	/**
@@ -354,7 +366,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return Boolean
 	 */
 	public function strictUserAuth( $username ) {
-		return false;
+		return true;
 	}
 
 	/**
@@ -389,9 +401,11 @@ class Auth_UCenter extends AuthPlugin {
 	 *
 	 * @return AuthPluginUser
 	 */
+	/*
 	public function getUserInstance( User &$user ) {
 		return new AuthPluginUser( $user );
 	}
+	*/
 
 	/**
 	 * Get a list of domains (in HTMLForm options format) used.
