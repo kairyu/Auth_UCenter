@@ -43,7 +43,7 @@ if (!class_exists('AuthPlugin')) {
  */
 class Auth_UCenter extends AuthPlugin {
 
-	private function connect() {
+	private function connectToDB() {
 		global $wgAuthUCenterDBCharset;
 		global $wgAuthUCenterDBHost;
 		global $wgAuthUCenterDBName;
@@ -60,21 +60,32 @@ class Auth_UCenter extends AuthPlugin {
 	}
 
 	private function processUsername( $username ) {
-		global $wgAuthUCenterUCCharset;
+		global $wgAuthUCenterServerCharset;
 		$username = htmlspecialchars(strtolower($username), ENT_QUOTES, 'UTF-8');
-		if (isset($wgAuthUCenterUCCharset) && !strcasecmp($wgAuthUCenterUCCharset, 'UTF-8')) {
-			$username = iconv('UTF-8', $wgAuthUCenterUCCharset, $username);
+		if (isset($wgAuthUCenterServerCharset) && (strcasecmp($wgAuthUCenterServerCharset, 'UTF-8') != 0)) {
+			$username = iconv('UTF-8', $wgAuthUCenterServerCharset, $username);
 		}
 		return $username;
 	}
 
-	private function checkCredit( $uid ) {
+	private function checkPermission( $uid ) {
+		return $this->checkAdmin($uid) && $this->checkCredits($uid);
+	}
+
+	private function checkAdmin( $uid ) {
+		if ($this->queryAdminID($uid) > 0) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+
+	private function checkCredits( $uid ) {
 		global $wgAuthUCenterCreditLimit;
 		if (isset($wgAuthUCenterCreditLimit) && $wgAuthUCenterCreditLimit > 0) {
 			//$credit = uc_user_getcredit($uid, 1, 1);
 			$credit = $this->queryCredits($uid);
-			echo "Credit: '$credit'.\n";
-			echo "uid: $uid\n";
 			return $credit >= $wgAuthUCenterCreditLimit;
 		}
 		else {
@@ -92,7 +103,7 @@ class Auth_UCenter extends AuthPlugin {
 
 	private function queryMember( $uid, $field ) {
 		global $wgAuthUCenterDBTablePre;
-		$connection = $this->connect();
+		$connection = $this->connectToDB();
 		$query = 	"SELECT `$field` ".
 				"FROM ${wgAuthUCenterDBTablePre}common_member ".
 				"WHERE `uid` = '$uid' ".
@@ -100,11 +111,33 @@ class Auth_UCenter extends AuthPlugin {
 		$row = mysql_query($query, $connection);
 		while ($row = mysql_fetch_array($row)) {
 			$result = $row[$field];
-			echo "$result\n";
 		}
 		return $result;
 	}
 		
+	public function fillUser( &$user ) {
+		$username = $this->processUsername($user->getName());
+		if ($data = uc_get_user($username)) {
+			list($uc_uid, $uc_username, $uc_email) = $data;
+			$user->setEmail($uc_email);
+		}
+		else {
+			echo "No such user.";
+			return false;
+		}
+		$user->removeGroup("user");
+		$user->removeGroup("autoconfirmed");
+		$user->removeGroup("sysop");
+		$admin = $this->queryAdminId($uc_uid);
+		if ($admin > 0) {
+			$user->addGroup("sysop");
+		}
+		if ($admin == 1) {
+			$user->addGroup("bureaucrats");
+		}
+		$user->saveSettings();
+		return true;
+	}
 
 	/**
 	 * @var string
@@ -124,7 +157,7 @@ class Auth_UCenter extends AuthPlugin {
 		$username = $this->processUsername($username);
 		if ($data = uc_get_user($username)) {
 			list($uc_uid, $uc_username, $uc_email) = $data;
-			return $this->checkCredit($uc_uid);
+			return $this->checkPermission($uc_uid);
 		}
 		else {
 			return false;
@@ -146,18 +179,18 @@ class Auth_UCenter extends AuthPlugin {
 		list($uc_uid, $uc_username, $uc_password, $uc_email) = uc_user_login($username, $password);
 		if ($uc_uid > 0) {
 			echo uc_user_synlogin($uc_uid);
-			return $this->checkCredit($uc_uid);
+			return $this->checkPermission($uc_uid);
 		}
 		else if ($uc_uid == -1) {
-			echo "No such user.";
+			//echo "No such user.";
 			return false;
 		}
 		else if ($uc_uid == -2) {
-			echo "Password error.";
+			//echo "Password error.";
 			return false;
 		}
 		else {
-			echo "Unknown error.";
+			//echo "Unknown error.";
 			return false;
 		}
 	}
@@ -217,27 +250,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @return bool
 	 */
 	public function updateUser( &$user ) {
-		$username = $this->processUsername($user->mName);
-		if ($data = uc_get_user($username)) {
-			list($uc_uid, $uc_username, $uc_email) = $data;
-			if (!$this->checkCredit($uc_uid)) {
-				return false;
-			}
-			$user->mEmail = $uc_email;
-			$user->mId = $uc_uid;
-		}
-		else {
-			echo "No such user.";
-			return false;
-		}
-		$user->removeGroup("user");
-		$user->removeGroup("autoconfirmed");
-		$user->removeGroup("sysop");
-		if ($this->queryAdminId($uc_uid) > 0) {
-			$user->addGroup("sysop");
-		}
-		$user->saveSettings();
-		return true;
+		return $this->fillUser($user);
 	}
 
 	/**
@@ -381,7 +394,7 @@ class Auth_UCenter extends AuthPlugin {
 	 * @param $autocreate Boolean: True if user is being autocreated on login
 	 */
 	public function initUser( &$user, $autocreate = false ) {
-		$this->updateUser(&$user);
+		$this->fillUser($user);
 	}
 
 	/**
