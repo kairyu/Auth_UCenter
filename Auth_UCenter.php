@@ -82,11 +82,11 @@ class Auth_UCenter extends AuthPlugin {
 	}
 
 	private function checkCredits( $uid ) {
-		global $wgAuthUCenterCreditLimit;
-		if (isset($wgAuthUCenterCreditLimit) && $wgAuthUCenterCreditLimit > 0) {
+		global $wgAuthUCenterCreditsLimit;
+		if (isset($wgAuthUCenterCreditsLimit) && $wgAuthUCenterCreditsLimit > 0) {
 			//$credit = uc_user_getcredit($uid, 1, 1);
 			$credit = $this->queryCredits($uid);
-			return $credit >= $wgAuthUCenterCreditLimit;
+			return $credit >= $wgAuthUCenterCreditsLimit;
 		}
 		else {
 			return true;
