@@ -69,7 +69,10 @@ class Auth_UCenter extends AuthPlugin {
 	}
 
 	private function checkPermission( $uid ) {
-		return $this->checkAdmin($uid) && $this->checkCredits($uid);
+		if (!$this->checkGroup($uid)) {
+			return false;
+		}
+		return $this->checkAdmin($uid) || $this->checkCredits($uid);
 	}
 
 	private function checkAdmin( $uid ) {
@@ -78,6 +81,22 @@ class Auth_UCenter extends AuthPlugin {
 		}
 		else {
 			return false;
+		}
+	}
+
+	private function checkGroup( $uid ) {
+		global $wgAuthUCenterBannedGroup;
+		if (isset($wgAuthUCenterBannedGroup)) {
+			$group = $this->queryGroupId($uid);
+			foreach ($wgAuthUCenterBannedGroup as $banned) {
+				if ($banned == $group) {
+					return false;
+				}
+			}
+			return true;
+		}
+		else {
+			return true;
 		}
 	}
 
@@ -97,11 +116,15 @@ class Auth_UCenter extends AuthPlugin {
 		return $this->queryMember($uid, 'adminid');
 	}
 
+	private function queryGroupId( $uid ) {
+		return $this->queryMember($uid, 'groupid');
+	}
+
 	private function queryCredits( $uid ) {
 		return $this->queryMember($uid, 'credits');
 	}
 
-	private function queryMember( $uid, $field ) {
+	private function queryMember( $uid, $field='' ) {
 		global $wgAuthUCenterDBTablePre;
 		$connection = $this->connectToDB();
 		$query = 	"SELECT `$field` ".
@@ -110,7 +133,12 @@ class Auth_UCenter extends AuthPlugin {
 				"LIMIT 1";
 		$row = mysql_query($query, $connection);
 		while ($row = mysql_fetch_array($row)) {
-			$result = $row[$field];
+			if ($field == '') {
+				$result = $row;
+			}
+			else {
+				$result = $row[$field];
+			}
 		}
 		return $result;
 	}
