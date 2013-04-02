@@ -161,7 +161,7 @@ class Auth_UCenter extends AuthPlugin {
 			$user->addGroup("sysop");
 		}
 		if ($admin == 1) {
-			$user->addGroup("bureaucrats");
+			$user->addGroup("bureaucrat");
 		}
 		$user->saveSettings();
 		return true;
