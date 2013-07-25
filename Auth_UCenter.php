@@ -61,6 +61,7 @@ class Auth_UCenter extends AuthPlugin {
 
 	private function processUsername( $username ) {
 		global $wgAuthUCenterServerCharset;
+		$username = str_replace(' ', '_', $username);
 		$username = htmlspecialchars(strtolower($username), ENT_QUOTES, 'UTF-8');
 		if (isset($wgAuthUCenterServerCharset) && (strcasecmp($wgAuthUCenterServerCharset, 'UTF-8') != 0)) {
 			$username = iconv('UTF-8', $wgAuthUCenterServerCharset, $username);
